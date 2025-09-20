@@ -3,7 +3,7 @@
 <head>
     <title>Alaska Guesser</title>
     <style>
-        /* All your CSS remains the same */
+        /* Basic styles */
         html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
         #container { display: flex; width: 100%; height: 100%; }
         #pano { flex: 1; background: #333; }
@@ -11,13 +11,29 @@
         #map { flex-grow: 1; }
         #ui { padding: 10px; background: #f2f2f2; text-align: center; border-top: 1px solid #ccc; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #modalOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        #modalContent { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px; text-align: left; }
+
+        /* Styles for the Modal */
+        #modalOverlay {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+        }
+        #modalContent {
+            background: white; padding: 25px; border-radius: 8px;
+            width: 90%; max-width: 500px; text-align: left;
+        }
         #modalContent h2 { margin-top: 0; }
         #modalContent input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
         #modalContent button { width: 100%; }
         #modalContent summary { cursor: pointer; color: #007bff; margin-top: 15px; }
         #modalContent ol { line-height: 1.6; }
+        
+        /* New UI elements for score */
+        #score-display { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+        #scoreboard { text-align: left; max-width: 300px; margin: 15px auto; padding: 10px; background-color: #fff; border: 1px solid #ddd;}
+        #scoreboard h3 { margin-top: 0; text-align: center;}
     </style>
 </head>
 <body>
@@ -41,24 +57,34 @@
             </details>
         </div>
     </div>
+
     <div id="container">
         <div id="pano"></div>
         <div id="map-container">
             <div id="map"></div>
             <div id="ui">
+                <div id="score-display">Round: 1/5 | Total Score: 0</div>
                 <button id="actionBtn">Make Guess</button>
                 <p id="resultText"></p>
+                <div id="scoreboard" style="display: none;">
+                    <h3>High Scores</h3>
+                    <ol id="score-list">
+                        <li>Player1 - 24,500</li>
+                        <li>Player2 - 23,100</li>
+                    </ol>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        let panorama, map;
-        let currentGuess, actualLocation;
-        let guessMarker = null;
-        let answerMarker = null;
-        let resultLine = null;
-        let streetViewService;
+        let panorama, map, streetViewService;
+        let currentGuess, actualLocation, preloadedLocation;
+        let guessMarker = null, answerMarker = null, resultLine = null;
+        
+        let currentRound = 1;
+        let totalScore = 0;
+        const MAX_ROUNDS = 5;
 
         const gameBounds = {
             sw: { lat: 60.4, lng: -151.5 },
@@ -66,24 +92,32 @@
         };
 
         function startNewRound() {
+            if (currentRound > MAX_ROUNDS) {
+                endGame();
+                return;
+            }
+            // Reset UI elements
             document.getElementById('resultText').innerText = '';
             if (guessMarker) guessMarker.setMap(null);
             if (answerMarker) answerMarker.setMap(null);
             if (resultLine) resultLine.setMap(null);
-            
-            // THIS IS THE FIX: Fully reset the guessMarker variable
-            guessMarker = null; 
+            currentGuess = null; 
+            guessMarker = null; // Fix for the pin drop issue
             
             const actionBtn = document.getElementById('actionBtn');
             actionBtn.innerText = "Make Guess";
             actionBtn.disabled = false;
             actionBtn.onclick = makeGuess;
 
-            panorama.setVisible(false);
-            findRandomLocation();
+            updateScoreDisplay();
+            
+            actualLocation = preloadedLocation;
+            panorama.setPosition(actualLocation);
+            panorama.setVisible(true);
+            findRandomLocation(true); // Preload the *next* location
         }
 
-        function findRandomLocation() {
+        function findRandomLocation(isPreload = false) {
             const randomLat = Math.random() * (gameBounds.ne.lat - gameBounds.sw.lat) + gameBounds.sw.lat;
             const randomLng = Math.random() * (gameBounds.ne.lng - gameBounds.sw.lng) + gameBounds.sw.lng;
             const randomPoint = { lat: randomLat, lng: randomLng };
@@ -92,14 +126,18 @@
                 location: randomPoint, 
                 radius: 50000,
                 source: 'outdoor'
-            }, 
-            (data, status) => {
+            }, (data, status) => {
                 if (status === 'OK') {
-                    actualLocation = data.location.latLng;
-                    panorama.setPosition(actualLocation);
-                    panorama.setVisible(true);
+                    if (isPreload) {
+                        preloadedLocation = data.location.latLng;
+                    } else {
+                        actualLocation = data.location.latLng;
+                        panorama.setPosition(actualLocation);
+                        panorama.setVisible(true);
+                        findRandomLocation(true);
+                    }
                 } else {
-                    findRandomLocation();
+                    findRandomLocation(isPreload); 
                 }
             });
         }
@@ -111,56 +149,69 @@
             }
 
             const distance = google.maps.geometry.spherical.computeDistanceBetween(currentGuess, actualLocation);
+            const score = calculateScore(distance);
+            totalScore += score;
+            
             const distanceInKm = (distance / 1000).toFixed(2);
-            document.getElementById('resultText').innerText = `You were ${distanceInKm} km away!`;
+            document.getElementById('resultText').innerText = `You were ${distanceInKm} km away! You scored ${score} points.`;
+            updateScoreDisplay();
             
             answerMarker = new google.maps.Marker({ position: actualLocation, map: map, icon: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' });
             resultLine = new google.maps.Polyline({ path: [currentGuess, actualLocation], map: map });
             map.fitBounds(new google.maps.LatLngBounds(currentGuess, actualLocation));
 
+            currentRound++;
             const actionBtn = document.getElementById('actionBtn');
-            actionBtn.innerText = "Play Next Round";
+            actionBtn.innerText = currentRound > MAX_ROUNDS ? "View Final Score" : "Play Next Round";
             actionBtn.onclick = startNewRound;
+        }
+
+        function calculateScore(distance) {
+            const maxDistance = 2000000; 
+            if (distance > maxDistance) return 0;
+            return Math.round(5000 * Math.exp(-5 * (distance / maxDistance)));
+        }
+        
+        function updateScoreDisplay() {
+             document.getElementById('score-display').innerText = `Round: ${Math.min(currentRound, MAX_ROUNDS)}/${MAX_ROUNDS} | Total Score: ${totalScore}`;
+        }
+
+        function endGame() {
+            document.getElementById('resultText').innerText = `Game Over! Your final score is ${totalScore}.`;
+            const actionBtn = document.getElementById('actionBtn');
+            actionBtn.innerText = "Submit Score";
+            actionBtn.onclick = () => {
+                const playerName = prompt("Enter your name for the scoreboard:", "Player");
+                if (playerName) {
+                    alert(`Score submitted for ${playerName}! (This is a placeholder)`);
+                    actionBtn.innerText = "Play Again?";
+                    actionBtn.onclick = () => window.location.reload();
+                }
+            };
+            document.getElementById('scoreboard').style.display = 'block';
         }
 
         function initGame() {
             streetViewService = new google.maps.StreetViewService();
-
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 61.5, lng: -149.5 },
-                zoom: 8,
-            });
-
+            map = new google.maps.Map(document.getElementById('map'), { center: { lat: 61.5, lng: -149.5 }, zoom: 8 });
             panorama = new google.maps.StreetViewPanorama(document.getElementById('pano'), {
-                visible: false,
-                addressControl: false,
-                linksControl: false,
-                showRoadLabels: false
+                visible: false, addressControl: false, linksControl: false, showRoadLabels: false
             });
             
             map.addListener('click', (e) => {
                 currentGuess = e.latLng;
-                // This logic is now correct because guessMarker is properly reset
                 if (guessMarker) {
                     guessMarker.setPosition(currentGuess);
                 } else {
-                    guessMarker = new google.maps.Marker({
-                        position: currentGuess,
-                        map: map,
-                    });
+                    guessMarker = new google.maps.Marker({ position: currentGuess, map: map });
                 }
             });
             
             document.getElementById('actionBtn').onclick = makeGuess;
-            startNewRound();
+            findRandomLocation(false);
         }
 
         function loadScript(apiKey) {
-            const existingScript = document.getElementById('googleMapsScript');
-            if (existingScript) {
-                existingScript.remove();
-            }
-
             const script = document.createElement('script');
             script.id = 'googleMapsScript';
             script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initGame&libraries=geometry`;
