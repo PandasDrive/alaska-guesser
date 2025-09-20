@@ -77,7 +77,8 @@
         let guessMarker = null;
         let answerMarker = null;
         let resultLine = null;
-        let streetViewService; // <-- Variable is DECLARED here
+        // THIS IS THE FIX: Declare the variable here, but don't assign it yet.
+        let streetViewService; 
 
         const gameBounds = {
             sw: { lat: 60.4, lng: -151.5 },
@@ -140,7 +141,9 @@
         }
 
         function initGame() {
-            // <-- Variable is ASSIGNED here. This is the fix.
+            // THIS IS THE FIX: Initialize the variable inside this function.
+            // This function only runs AFTER the Google Maps script is loaded,
+            // so 'google' is guaranteed to exist here.
             streetViewService = new google.maps.StreetViewService();
 
             map = new google.maps.Map(document.getElementById('map'), {
