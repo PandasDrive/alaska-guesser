@@ -107,10 +107,17 @@
         let timeLeft = 0;
         let userApiKey = '';
 
-        const gameBounds = {
-            sw: { lat: 51.2, lng: -179.1 }, // Expanded to cover more of Alaska
-            ne: { lat: 71.4, lng: -129.9 }
-        };
+        // *** CHANGE: Using an array of specific regions instead of one large box ***
+        const alaskaRegions = [
+            // 1. Southcentral & Interior (Anchorage, Fairbanks, Valdez)
+            { sw: { lat: 60.0, lng: -152.5 }, ne: { lat: 65.0, lng: -144.0 } },
+            // 2. Kenai Peninsula (Homer, Seward)
+            { sw: { lat: 59.4, lng: -152.0 }, ne: { lat: 61.0, lng: -149.0 } },
+            // 3. Southeast Panhandle (Juneau, Sitka)
+            { sw: { lat: 57.0, lng: -135.8 }, ne: { lat: 58.5, lng: -134.0 } },
+            // 4. Dalton Highway (Arctic Region)
+            { sw: { lat: 65.0, lng: -151.0 }, ne: { lat: 70.0, lng: -148.0 } }
+        ];
 
         const landmarks = [
             { lat: 63.7305, lng: -148.9130, name: "Denali National Park" },
@@ -129,7 +136,6 @@
         function loadGoogleMapsScript(apiKey) {
             const script = document.createElement('script');
             script.id = 'googleMapsScript';
-            // IMPORTANT: The "callback=initGame" part tells the script to run our initGame function once it's ready
             script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initGame&libraries=geometry`;
             script.defer = true;
             script.onerror = () => {
@@ -146,7 +152,6 @@
                 endGame();
                 return;
             }
-            // Reset UI elements
             document.getElementById('resultText').innerText = '';
             if (guessMarker) guessMarker.setMap(null);
             if (answerMarker) answerMarker.setMap(null);
@@ -161,12 +166,11 @@
 
             updateScoreDisplay();
             
-            // Game Mode specific setup
             if (gameMode === 'beatTheClock') {
-                timeLeft = 30; // 30 seconds per round
+                timeLeft = 30; 
                 startTimer();
             } else if (gameMode === 'timeAttack' && currentRound === 1) {
-                timeLeft = 180; // 3 minutes for the whole game
+                timeLeft = 180; 
                 startTimer();
             }
 
@@ -183,14 +187,19 @@
             }
         }
 
+        // *** CHANGE: Updated function to use the new alaskaRegions array ***
         function findRandomLocation(isPreload = false) {
-            const randomLat = Math.random() * (gameBounds.ne.lat - gameBounds.sw.lat) + gameBounds.sw.lat;
-            const randomLng = Math.random() * (gameBounds.ne.lng - gameBounds.sw.lng) + gameBounds.sw.lng;
+            // 1. Pick a random region from our list
+            const region = alaskaRegions[Math.floor(Math.random() * alaskaRegions.length)];
+
+            // 2. Generate a random point *within that region's bounds*
+            const randomLat = Math.random() * (region.ne.lat - region.sw.lat) + region.sw.lat;
+            const randomLng = Math.random() * (region.ne.lng - region.sw.lng) + region.sw.lng;
             const randomPoint = { lat: randomLat, lng: randomLng };
 
             streetViewService.getPanorama({ 
                 location: randomPoint, 
-                radius: 100000,
+                radius: 50000,
                 source: 'outdoor'
             }, (data, status) => {
                 if (status === 'OK') {
@@ -216,7 +225,7 @@
             
             if (gameMode === 'beatTheClock') {
                 clearInterval(timerInterval);
-                totalScore += timeLeft; // Add remaining time as bonus points
+                totalScore += timeLeft;
             }
 
             const distance = google.maps.geometry.spherical.computeDistanceBetween(currentGuess, actualLocation);
@@ -227,7 +236,7 @@
             document.getElementById('resultText').innerText = `You were ${distanceInKm} km away! You scored ${score} points.`;
             updateScoreDisplay();
             
-            answerMarker = new google.maps.Marker({ position: actualLocation, map: map, icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png' });
+            answerMarker = new google.maps.Marker({ position: actualLocation, map: map, icon: 'http://googleusercontent.com/maps/google.com/1' });
             resultLine = new google.maps.Polyline({ path: [currentGuess, actualLocation], map: map });
             map.fitBounds(new google.maps.LatLngBounds(currentGuess, actualLocation));
 
@@ -296,7 +305,6 @@
             }, 1000);
         }
         
-        // This function is now called only after the Google Maps script is loaded and ready
         function initGame() {
             streetViewService = new google.maps.StreetViewService();
             map = new google.maps.Map(document.getElementById('map'), { center: { lat: 61.5, lng: -149.5 }, zoom: 5 });
