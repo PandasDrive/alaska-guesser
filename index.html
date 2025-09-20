@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Alaska Guesser</title>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+        #container { display: flex; width: 100%; height: 100%; }
+        #pano { flex: 1; background: #333; } /* The Street View panorama */
+        #map-container { flex: 1; display: flex; flex-direction: column; }
+        #map { flex-grow: 1; } /* The guessing map */
+        #ui { padding: 10px; background: #f2f2f2; text-align: center; border-top: 1px solid #ccc; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="pano"></div>
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="ui">
+                <button id="actionBtn">Make Guess</button>
+                <p id="resultText"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let panorama, map;
+        let currentGuess, actualLocation;
+        let guessMarker = null;
+        let answerMarker = null;
+        let resultLine = null;
+
+        // The bounding box for our play area (SW corner and NE corner)
+        const gameBounds = {
+            sw: { lat: 60.4, lng: -151.5 }, // Southwest of Kenai Peninsula
+            ne: { lat: 62.4, lng: -148.5 }  // Northeast of Talkeetna/Palmer
+        };
+
+        const streetViewService = new google.maps.StreetViewService();
+
+        function startNewRound() {
+            // Reset the UI from the previous round
+            document.getElementById('resultText').innerText = '';
+            if (guessMarker) guessMarker.setMap(null);
+            if (answerMarker) answerMarker.setMap(null);
+            if (resultLine) resultLine.setMap(null);
+            
+            const actionBtn = document.getElementById('actionBtn');
+            actionBtn.innerText = "Make Guess";
+            actionBtn.disabled = false;
+            actionBtn.onclick = makeGuess;
+
+            // Show a loading message while we find a location
+            panorama.setVisible(false);
+
+            findRandomLocation();
+        }
+
+        function findRandomLocation() {
+            const randomLat = Math.random() * (gameBounds.ne.lat - gameBounds.sw.lat) + gameBounds.sw.lat;
+            const randomLng = Math.random() * (gameBounds.ne.lng - gameBounds.sw.lng) + gameBounds.sw.lng;
+            const randomPoint = { lat: randomLat, lng: randomLng };
+
+            streetViewService.getPanorama({ 
+                location: randomPoint, 
+                radius: 50000,
+                source: 'outdoor'
+            }, 
+            (data, status) => {
+                if (status === 'OK') {
+                    actualLocation = data.location.latLng;
+                    panorama.setPosition(actualLocation);
+                    panorama.setVisible(true);
+                } else {
+                    findRandomLocation(); // Try again
+                }
+            });
+        }
+        
+        function makeGuess() {
+            if (!currentGuess) {
+                alert("Please place a marker on the map first!");
+                return;
+            }
+
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(currentGuess, actualLocation);
+            const distanceInKm = (distance / 1000).toFixed(2);
+            document.getElementById('resultText').innerText = `You were ${distanceInKm} km away!`;
+            
+            // Show the answer on the map
+            answerMarker = new google.maps.Marker({ position: actualLocation, map: map, icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png' });
+            resultLine = new google.maps.Polyline({ path: [currentGuess, actualLocation], map: map });
+            map.fitBounds(new google.maps.LatLngBounds(currentGuess, actualLocation));
+
+            const actionBtn = document.getElementById('actionBtn');
+            actionBtn.innerText = "Play Next Round";
+            actionBtn.onclick = startNewRound;
+        }
+
+        function initGame() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 61.5, lng: -149.5 },
+                zoom: 8,
+            });
+
+            panorama = new google.maps.StreetViewPanorama(document.getElementById('pano'), {
+                visible: false,
+                addressControl: false,
+                linksControl: false,
+                showRoadLabels: false
+            });
+            
+            map.addListener('click', (e) => {
+                currentGuess = e.latLng;
+                if (guessMarker) {
+                    guessMarker.setPosition(currentGuess);
+                } else {
+                    guessMarker = new google.maps.Marker({ position: currentGuess, map: map });
+                }
+            });
+            
+            document.getElementById('actionBtn').onclick = makeGuess;
+
+            startNewRound();
+        }
+
+        function loadScript() {
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initGame&libraries=geometry`;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+        
+        window.onload = loadScript;
+    </script>
+</body>
+</html>
