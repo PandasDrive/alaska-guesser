@@ -77,13 +77,12 @@
         let guessMarker = null;
         let answerMarker = null;
         let resultLine = null;
+        let streetViewService; // <-- Variable is DECLARED here
 
         const gameBounds = {
             sw: { lat: 60.4, lng: -151.5 },
             ne: { lat: 62.4, lng: -148.5 }
         };
-
-        const streetViewService = new google.maps.StreetViewService();
 
         function startNewRound() {
             document.getElementById('resultText').innerText = '';
@@ -141,6 +140,9 @@
         }
 
         function initGame() {
+            // <-- Variable is ASSIGNED here. This is the fix.
+            streetViewService = new google.maps.StreetViewService();
+
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 61.5, lng: -149.5 },
                 zoom: 8,
